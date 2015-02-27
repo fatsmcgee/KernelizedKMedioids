@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.linalg import inv
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from sklearn.datasets import load_digits
@@ -7,6 +8,7 @@ def get_gram_matrix(data,kernel_func):
     n = data.shape[0]
     K = np.zeros((n,n))
     for i in range(n):
+        print(i)
         for j in range(n):
             K[i,j] = kernel_func(data[i,:],data[j,:])
             
@@ -62,6 +64,53 @@ def linear_kernel(dig1,dig2):
     return np.dot(dig1,dig2)
     
 
+def get_point_set(image):
+    rows,cols = image.shape
+    X,Y = np.meshgrid(range(cols),range(rows))
+    
+    image_present = (image>0).flatten()
+    x_coords = X.flatten()[image_present]
+    y_coords = Y.flatten()[image_present]
+    return np.vstack((x_coords,y_coords)).T
+    
+
+    
+    
+def fit_mv_gaussian(point_set):
+    mu = np.atleast_2d(np.mean(point_set,0))
+    n = point_set.shape[0]
+    
+    mean_subtracted = point_set - mu
+    sigma = (1/n)*np.dot(mean_subtracted.T,mean_subtracted)
+    return mu,sigma
+    
+    
+def make_kl_divergence_kernel(im_shape):
+    def kl_divergence_kernel(im1,im2):
+        #convert each image to a bag of coordinates 
+        im1 = im1.reshape(im_shape)
+        im2 = im2.reshape(im_shape)
+        
+        s1 = get_point_set(im1)
+        D = s1.shape[1]
+        mu1,sigma1 = fit_mv_gaussian(s1)
+        
+        s2 = get_point_set(im2)
+        mu2,sigma2 = fit_mv_gaussian(s2)
+        
+        #first calculate symmetric divergence of two distributions
+        sym_divergence = np.trace(sigma1 * inv(sigma2))
+        sym_divergence += np.trace(sigma2 * inv(sigma1))
+        sym_divergence -= 2*D
+        sym_divergence += np.trace(np.matrix(inv(sigma1) + inv(sigma2))\
+                    *np.matrix((mu1.T-mu2.T))*np.matrix((mu1-mu2)))
+        
+        #kernel is exp of negative symmetric divergence
+        return np.exp(-sym_divergence)
+        
+    return kl_divergence_kernel
+
+
 def mnist_medioids():
     mnist = load_digits()
     n_images = mnist.images.shape[0]
@@ -71,9 +120,11 @@ def mnist_medioids():
     data = mnist.data
     data = data[indices,:]
     
-    targets = mnist.target[indices,:]
+    #targets = mnist.target[indices,:]
     k = 10
-    medioids,assignments = get_k_medioids(data,10,linear_kernel)
+    #kern = make_kl_divergence_kernel((8,8))
+    kern = linear_kernel
+    medioids,assignments = get_k_medioids(data,10,kern)
     
     for i in range(k):
         plt.subplot(5,2,i)
@@ -82,7 +133,7 @@ def mnist_medioids():
     #return medioids
 
 
-
+mnist_medioids()
 
 
    
